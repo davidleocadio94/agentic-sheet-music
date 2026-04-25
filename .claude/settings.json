@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(uv *)",
+      "Bash(pytest *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(ruff *)",
+      "Bash(mypy *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(ls *)",
+      "Bash(mkdir -p *)",
+      "Bash(fluidsynth *)",
+      "Bash(lilypond *)",
+      "Bash(marp *)",
+      "Read(./**)",
+      "Read(~/Documents/Music/**)"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Read(./.env)",
+      "Read(./secrets/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(pip install *)",
+      "Bash(uv add *)"
+    ],
+    "defaultMode": "default"
+  },
+  "env": {
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "SHEETMUSIC_OUTPUTS_DIR": "./outputs",
+    "SHEETMUSIC_INPUTS_DIR": "./inputs"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-python.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

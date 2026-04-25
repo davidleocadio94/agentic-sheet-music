@@ -1,0 +1,30 @@
+# Claude Code local state
+.claude/settings.local.json
+.claude/agent-memory/
+CLAUDE.local.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Project artifacts
+inputs/*
+!inputs/.gitkeep
+!inputs/samples/
+outputs/*
+!outputs/.gitkeep
+
+# Env / secrets
+.env
+.env.*
+secrets/
+
+# OS
+.DS_Store
