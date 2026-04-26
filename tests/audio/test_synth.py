@@ -77,7 +77,7 @@ def test_milonga_midi_uses_piano_not_voice(tmp_path: Path) -> None:
     """Correctness: default MIDI program must be Acoustic Grand Piano (GM 0),
     not whatever Audiveris guessed (it defaults to 'Voice Oohs' = GM 53).
     """
-    from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+    from tests._compat import which_audiveris
     from agentic_sheet_music.player.synth import render_audio
 
     if which_audiveris() is None or not MILONGA_PDF.exists():
@@ -116,7 +116,7 @@ def test_milonga_midi_correctness(tmp_path: Path) -> None:
     from agentic_sheet_music.harmony.chord_extraction import extract_chords
     from agentic_sheet_music.harmony.key_detection import detect_keys
     from agentic_sheet_music.harmony.roman import assign_roman
-    from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+    from tests._compat import which_audiveris
     from agentic_sheet_music.player.synth import render_audio
 
     if which_audiveris() is None or not MILONGA_PDF.exists():
@@ -150,7 +150,7 @@ def test_milonga_midi_correctness(tmp_path: Path) -> None:
 @pytest.mark.audio_binary
 def test_milonga_wav_integration(tmp_path: Path) -> None:
     """If fluidsynth + SoundFont available, WAV rendering produces a real RIFF file."""
-    from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+    from tests._compat import which_audiveris
     from agentic_sheet_music.player import synth
 
     if which_audiveris() is None or not MILONGA_PDF.exists():

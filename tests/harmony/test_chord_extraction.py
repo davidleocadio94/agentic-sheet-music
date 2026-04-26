@@ -9,7 +9,7 @@ from agentic_sheet_music.harmony.chord_extraction import (
     extract_chords,
 )
 from agentic_sheet_music.omr.ingest import ingest
-from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+from tests._compat import which_audiveris
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "harmony-chord-extraction"
 FIXTURES_KEY = Path(__file__).parent.parent / "fixtures" / "harmony-key-detection"

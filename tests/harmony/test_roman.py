@@ -8,7 +8,7 @@ from agentic_sheet_music.harmony.chord_extraction import extract_chords
 from agentic_sheet_music.harmony.key_detection import detect_keys
 from agentic_sheet_music.harmony.roman import assign_roman
 from agentic_sheet_music.omr.ingest import ingest
-from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+from tests._compat import which_audiveris
 from agentic_sheet_music.types import KeyRegion
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "harmony-roman"

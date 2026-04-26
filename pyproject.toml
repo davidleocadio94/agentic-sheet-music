@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Sheet music -> harmony analysis + educational slides + audio playback."
 requires-python = ">=3.11"
 dependencies = [
+    "cairosvg>=2.9.0",
     "google-genai>=1.73.1",
     "music21>=9.1",
     "pymupdf>=1.27.2.3",
@@ -30,6 +31,8 @@ dev = [
 
 [project.scripts]
 analyze = "agentic_sheet_music.cli:main"
+eval = "agentic_sheet_music.eval.cli:main"
+improve-omr = "agentic_sheet_music.eval.loop:main"
 
 [build-system]
 requires = ["hatchling"]

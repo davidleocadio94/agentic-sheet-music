@@ -28,3 +28,11 @@ secrets/
 
 # OS
 .DS_Store
+
+# Eval-loop artifacts
+eval-fixtures/**/source.pdf
+eval-fixtures/**/candidate.musicxml
+eval-fixtures/**/result.json
+eval-runs/*.json
+eval-runs/*.txt
+eval-runs/loop.log

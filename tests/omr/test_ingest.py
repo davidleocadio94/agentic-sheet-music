@@ -52,13 +52,14 @@ def test_ingest_unsupported_extension_raises(tmp_path: Path) -> None:
         ingest(f)
 
 
-def test_ingest_pdf_raises_omr_not_available_when_audiveris_missing(
+def test_ingest_pdf_raises_omr_not_available_without_gemini_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Force which_audiveris() to return None; PDF ingest must surface a clear error.
-    from agentic_sheet_music.omr import ingest as ingest_mod
+    """With no Gemini API key configured, PDF ingest must raise OmrNotAvailable."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from agentic_sheet_music.omr import gemini_omr
 
-    monkeypatch.setattr(ingest_mod, "which_audiveris", lambda: None)
+    monkeypatch.setattr(gemini_omr, "DEFAULT_DOTENV_PATHS", ())
     f = tmp_path / "score.pdf"
     f.write_bytes(b"%PDF-1.4\n")
     with pytest.raises(OmrNotAvailable):
@@ -81,11 +82,11 @@ def test_milonga_has_correct_time_signature() -> None:
     """
     from music21 import converter
 
-    from agentic_sheet_music.omr.pdf_to_musicxml import which_audiveris
+    from tests._compat import which_audiveris
 
     MILONGA_PDF = Path("/Users/davidvillarreal/Documents/Music/ClassicalGuitar/milonga.pdf")
     if which_audiveris() is None or not MILONGA_PDF.exists():
-        pytest.skip("Audiveris / milonga fixtures not available")
+        pytest.skip("Audiveris removed; this test is obsolete (kept as historical doc)")
 
     score = ingest(MILONGA_PDF)
     assert score.meta.time_signature is not None, (
