@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_RENDER_DPI = 400
 DEFAULT_MAX_OUTPUT_TOKENS = 64_000
+DEFAULT_NUM_SAMPLES = 3  # self-consistency: smooth per-call variance via voting
 
 # We re-use the same dotenv lookup as before for dev convenience.
 DEFAULT_DOTENV_PATHS: tuple[Path, ...] = (
@@ -134,46 +135,129 @@ def pdf_to_musicxml(
     api_key: str | None = None,
     model: str = DEFAULT_MODEL,
     render_dpi: int = DEFAULT_RENDER_DPI,
+    num_samples: int = DEFAULT_NUM_SAMPLES,
 ) -> Path:
     """Convert a PDF to MusicXML using Gemini Vision.
 
-    Returns the path to the written MusicXML file.
+    Self-consistency: call Gemini `num_samples` times per page, then take a
+    per-measure majority vote over the resulting MusicXML. Single-call output
+    has ~30% per-measure variance on the same input — voting smooths it.
     """
     key = _resolve_api_key(api_key)
     client = genai.Client(api_key=key)
 
     output_xml.parent.mkdir(parents=True, exist_ok=True)
-    page_xmls: list[str] = []
+    page_xmls_per_sample: list[list[str]] = [[] for _ in range(num_samples)]
 
     with pymupdf.open(pdf) as doc:
         for i, page in enumerate(doc):
             png = _render_page_cropped(page, render_dpi)
-            try:
-                resp = client.models.generate_content(
-                    model=model,
-                    contents=[
-                        genai_types.Part.from_bytes(data=png, mime_type="image/png"),
-                        _PAGE_PROMPT,
-                    ],
-                    config=genai_types.GenerateContentConfig(
-                        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-                    ),
-                )
-            except Exception as e:  # noqa: BLE001
-                raise GeminiOmrError(
-                    f"Gemini call failed on page {i + 1} of {pdf}: {e}"
-                ) from e
+            for s in range(num_samples):
+                try:
+                    resp = client.models.generate_content(
+                        model=model,
+                        contents=[
+                            genai_types.Part.from_bytes(data=png, mime_type="image/png"),
+                            _PAGE_PROMPT,
+                        ],
+                        config=genai_types.GenerateContentConfig(
+                            max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+                        ),
+                    )
+                except Exception as e:  # noqa: BLE001
+                    raise GeminiOmrError(
+                        f"Gemini call failed on page {i + 1} of {pdf} (sample {s + 1}): {e}"
+                    ) from e
 
-            text = getattr(resp, "text", None) or ""
-            if not text.strip():
-                raise GeminiOmrError(
-                    f"Gemini returned empty response for page {i + 1} of {pdf}"
-                )
-            page_xmls.append(_strip_markdown_fences(text))
+                text = getattr(resp, "text", None) or ""
+                if not text.strip():
+                    raise GeminiOmrError(
+                        f"Gemini returned empty response for page {i + 1} of {pdf} (sample {s + 1})"
+                    )
+                page_xmls_per_sample[s].append(_strip_markdown_fences(text))
 
-    full_xml = _stitch_pages(page_xmls)
-    output_xml.write_text(full_xml, encoding="utf-8")
+    # Stitch each sample into a full document, then vote per measure.
+    full_per_sample = [_stitch_pages(p) for p in page_xmls_per_sample]
+    voted = _measure_majority_vote(full_per_sample) if num_samples > 1 else full_per_sample[0]
+    output_xml.write_text(voted, encoding="utf-8")
     return output_xml
+
+
+def _measure_majority_vote(samples: list[str]) -> str:
+    """Combine N candidate MusicXML strings by per-measure majority vote.
+
+    For each measure number M, pick the version that appears most often
+    across samples (using the literal measure XML string as the vote key).
+    Ties broken by sample order.
+    """
+    import xml.etree.ElementTree as ET
+    from collections import Counter
+
+    if not samples:
+        raise GeminiOmrError("no samples to vote on")
+    if len(samples) == 1:
+        return samples[0]
+
+    # Per-measure votes: {measure_number: Counter of normalized XML strings -> raw string}
+    per_measure_counters: dict[int, Counter] = {}
+    per_measure_raw: dict[int, dict[str, str]] = {}
+
+    for sample in samples:
+        try:
+            root = ET.fromstring(sample)
+        except ET.ParseError:
+            continue
+        for part in root.findall("part"):
+            for m in part.findall("measure"):
+                try:
+                    num = int(m.get("number", ""))
+                except ValueError:
+                    continue
+                normalized = _normalize_measure(m)
+                raw = ET.tostring(m, encoding="unicode")
+                per_measure_counters.setdefault(num, Counter())[normalized] += 1
+                per_measure_raw.setdefault(num, {})[normalized] = raw
+
+    # Pick winner per measure, then assemble final document using the first
+    # sample's <part-list> + part wrapper.
+    first_root = ET.fromstring(samples[0])
+    part_list_match = first_root.find("part-list")
+    part_list_xml = (
+        ET.tostring(part_list_match, encoding="unicode")
+        if part_list_match is not None
+        else '<part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>'
+    )
+    part_id_el = first_root.find("part")
+    part_id = part_id_el.get("id", "P1") if part_id_el is not None else "P1"
+
+    measure_xmls: list[str] = []
+    for num in sorted(per_measure_counters):
+        winner_norm, _votes = per_measure_counters[num].most_common(1)[0]
+        measure_xmls.append(per_measure_raw[num][winner_norm])
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<score-partwise version="4.0">\n'
+        f"  {part_list_xml}\n"
+        f'  <part id="{part_id}">\n'
+        + "\n".join(f"    {m}" for m in measure_xmls)
+        + "\n  </part>\n"
+        "</score-partwise>\n"
+    )
+
+
+def _normalize_measure(measure_el) -> str:
+    """Compact, comparable rendering of a measure for vote-key purposes.
+
+    Strips whitespace and ignores attributes that shouldn't affect equality.
+    """
+    import xml.etree.ElementTree as ET
+
+    parts: list[str] = []
+    for el in measure_el.iter():
+        text = (el.text or "").strip()
+        parts.append(f"{el.tag}={text}")
+    return "|".join(parts)
 
 
 # ---------------------------------------------------------------------------
