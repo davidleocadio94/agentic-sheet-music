@@ -25,7 +25,7 @@ from google.genai import types as genai_types
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
-DEFAULT_RENDER_DPI = 200
+DEFAULT_RENDER_DPI = 400
 DEFAULT_MAX_OUTPUT_TOKENS = 64_000
 
 # We re-use the same dotenv lookup as before for dev convenience.
@@ -41,22 +41,81 @@ Do NOT include `<?xml ...?>`, `<!DOCTYPE>`, or `<score-partwise>` wrappers.
 Use the exact tag names from the MusicXML 4.0 spec. Be conservative:
 if you can't read something clearly, omit it rather than guess.
 
-Specifically:
-- Every `<note>` must have either a `<pitch>` (with `<step>`, `<octave>`, optional `<alter>`)
-  OR a `<rest/>`.
-- Every `<note>` must have a `<duration>` matching `<divisions>` (declared once at the start).
-- Use a single `<divisions>` value for the whole page. 8 (eighth-note granularity)
-  works for most engravings; raise to 12 for compound meter or to 24 for triplets.
+## Step 1: read the staff context FIRST, before any notes
+
+Before transcribing notes, identify and emit these as `<attributes>` in the
+first measure:
+
+- **Clef**: look at the symbol at the start of the staff.
+  - Treble clef (G clef on line 2): the line wrapping at the bottom of the
+    spiral is line 2 from the bottom. That line is G4. The bottom line is E4,
+    spaces from bottom are F4 A4 C5 E5, lines from bottom are E4 G4 B4 D5 F5.
+  - Bass clef (F clef on line 4): the second line from the top is F3. Lines
+    from bottom are G2 B2 D3 F3 A3, spaces are A2 C3 E3 G3.
+  - Alto clef (C clef on middle line): middle line is C4.
+- **Time signature**: look at the two stacked numbers right after the clef
+  and key. The top is `<beats>`, bottom is `<beat-type>`.
+- **Key signature**: count the sharps or flats *between* the clef and time
+  signature. Sharps are `<fifths>+N</fifths>`. Flats are `<fifths>-N</fifths>`.
+  - 0=C major/A minor, 1#=G/e, 2#=D/b, 3#=A/f#, 4#=E/c#, 5#=B/g#
+  - 1b=F/d, 2b=Bb/g, 3b=Eb/c, 4b=Ab/f, 5b=Db/bb
+
+## Step 2: octave numbering (DOUBLE-CHECK every note)
+
+Middle C is C4. The C just above middle C is C5. Going up an octave adds 1.
+On a treble clef:
+- The note on the bottom line is **E4** (not E5 or E3).
+- Middle C is one ledger line BELOW the bottom line of treble.
+- The top line is **F5**.
+- The first ledger line above is **A5**, then C6.
+
+Read each note's vertical position carefully against the staff lines. A note
+sitting on the third line from the bottom of treble is **B4**. A note on
+the second line from the top of treble is **D5**. Octave errors are the most
+common mistake — slow down and count line-by-line.
+
+## Step 3: key signature application
+
+The key signature applies to EVERY note of that letter name in EVERY octave
+unless cancelled by a natural sign. In D major (2 sharps), every F is F#
+and every C is C#, including bass-staff notes. Emit `<alter>1</alter>` for
+sharps, `<alter>-1</alter>` for flats.
+
+Notes notated with explicit accidentals override the key signature for the
+rest of that measure.
+
+## Step 4: rhythms
+
+Use a single `<divisions>` value for the whole page. **Use `<divisions>8</divisions>`**
+unless the score has 16th-note triplets (then 24) or strict whole-note motion (then 4).
+
+With divisions=8, durations are:
+- whole = 32, half = 16, dotted-half = 24
+- quarter = 8, dotted-quarter = 12
+- eighth = 4, dotted-eighth = 6
+- sixteenth = 2
+
+Each `<note>` must have a `<duration>` matching `<divisions>`. The total
+duration in a measure must equal `(beats * 32 / beat_type)`.
+
+## Step 5: voices and chords
+
 - For two-voice writing on one staff, emit `<voice>1</voice>` for the upper
   voice and `<voice>2</voice>` for the lower; separate the voices with
   `<backup><duration>...</duration></backup>` between them.
-- Circled fingering numbers above noteheads are NOT triplets — never emit
-  `<time-modification>` for them. Only emit time-modification when an actual
-  triplet bracket is drawn.
-- For a shared-notehead two-voice case (one head, two stems), the rhythm
-  belonging to each voice is determined by the stem direction.
+- For chords (multiple notes struck simultaneously in one voice), the second
+  and subsequent notes in the chord get `<chord/>` as the first child.
 
-Output format: just the raw MusicXML fragment, no markdown fences, no commentary.
+## Step 6: things NOT to misinterpret
+
+- Circled fingering numbers above/below noteheads are NOT triplets — never
+  emit `<time-modification>` for them.
+- Stem direction alone doesn't change pitch — read the notehead position.
+- Letters like "p, i, m, a" near the staff are right-hand fingerings, not pitches.
+
+## Output format
+
+Just the raw MusicXML fragment, no markdown fences, no commentary.
 """
 
 
@@ -88,7 +147,7 @@ def pdf_to_musicxml(
 
     with pymupdf.open(pdf) as doc:
         for i, page in enumerate(doc):
-            png = page.get_pixmap(dpi=render_dpi).tobytes("png")
+            png = _render_page_cropped(page, render_dpi)
             try:
                 resp = client.models.generate_content(
                     model=model,
@@ -119,6 +178,61 @@ def pdf_to_musicxml(
 
 # ---------------------------------------------------------------------------
 # helpers
+
+
+def _render_page_cropped(page, dpi: int) -> bytes:
+    """Render a PDF page to PNG, cropped to its non-white content bounding box.
+
+    Verovio output has a lot of whitespace (one staff at the top of a US-Letter
+    page). Cropping reduces the image size Gemini sees and effectively zooms in
+    on the music — pixels per notehead go up, vertical localisation improves.
+    """
+    pix = page.get_pixmap(dpi=dpi)
+    w, h = pix.width, pix.height
+    # PyMuPDF Pixmap supports per-byte access via .samples (RGB or RGBA).
+    samples = pix.samples
+    n = pix.n  # bytes per pixel
+    # Find tight bounding box of non-white pixels.
+    min_x, min_y, max_x, max_y = w, h, 0, 0
+    threshold = 240  # treat near-white as background
+    # Scan in strides to keep this fast (every ~3rd pixel).
+    stride = 3
+    for y in range(0, h, stride):
+        row_start = y * w * n
+        for x in range(0, w, stride):
+            idx = row_start + x * n
+            # Use luminance-ish sum of first 3 channels.
+            if n >= 3:
+                lum = (samples[idx] + samples[idx + 1] + samples[idx + 2]) // 3
+            else:
+                lum = samples[idx]
+            if lum < threshold:
+                if x < min_x:
+                    min_x = x
+                if y < min_y:
+                    min_y = y
+                if x > max_x:
+                    max_x = x
+                if y > max_y:
+                    max_y = y
+
+    if min_x >= max_x or min_y >= max_y:
+        # Empty page — fall back to full image.
+        return pix.tobytes("png")
+
+    # Pad the box a little so we don't clip stems / barlines.
+    pad = max(20, dpi // 10)
+    x0 = max(0, min_x - pad)
+    y0 = max(0, min_y - pad)
+    x1 = min(w, max_x + pad)
+    y1 = min(h, max_y + pad)
+
+    # Crop via PyMuPDF: re-render the same page using a clip rect in PDF space.
+    # Convert the pixel bbox back to PDF points.
+    scale = 72.0 / dpi
+    clip = pymupdf.Rect(x0 * scale, y0 * scale, x1 * scale, y1 * scale)
+    cropped = page.get_pixmap(dpi=dpi, clip=clip)
+    return cropped.tobytes("png")
 
 
 def _strip_markdown_fences(text: str) -> str:
