@@ -42,7 +42,18 @@ def musicxml_to_pdf(
 
     try:
         subprocess.run(
-            [verovio_bin, str(musicxml), "-o", str(svg_tmp)],
+            [
+                verovio_bin,
+                "--scale", "200",
+                "--adjust-page-height",
+                "--adjust-page-width",
+                "--page-margin-top", "50",
+                "--page-margin-bottom", "50",
+                "--page-margin-left", "50",
+                "--page-margin-right", "50",
+                str(musicxml),
+                "-o", str(svg_tmp),
+            ],
             check=True,
             capture_output=True,
             text=True,
