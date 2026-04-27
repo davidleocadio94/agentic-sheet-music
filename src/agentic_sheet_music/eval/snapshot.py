@@ -13,10 +13,14 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 UV_LOCK = REPO_ROOT / "uv.lock"
 
 # Files the agent must NOT modify during a loop iteration.
+# Note: under eval-fixtures/, ONLY ground-truth.musicxml is immutable —
+# candidate.musicxml and result.json are regenerated every eval run.
 IMMUTABLE_PATHS = (
     "src/agentic_sheet_music/eval/evaluator.py",
-    "eval-fixtures",
     "tests/eval",
+)
+IMMUTABLE_GLOBS = (
+    "eval-fixtures/**/ground-truth.musicxml",
 )
 
 REPO_SIZE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
@@ -106,6 +110,9 @@ def _brew_list() -> tuple[str, ...]:
     return tuple(sorted(line.strip() for line in out.splitlines() if line.strip()))
 
 
+_IMMUTABLE_SKIP = {"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
+
+
 def _immutable_hashes(root: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     for rel in IMMUTABLE_PATHS:
@@ -114,9 +121,16 @@ def _immutable_hashes(root: Path) -> dict[str, str]:
             out[rel] = _file_hash(p)
         elif p.is_dir():
             for sub in sorted(p.rglob("*")):
-                if sub.is_file():
-                    rel_sub = sub.relative_to(root).as_posix()
-                    out[rel_sub] = _file_hash(sub)
+                if not sub.is_file():
+                    continue
+                if any(part in _IMMUTABLE_SKIP for part in sub.parts):
+                    continue
+                rel_sub = sub.relative_to(root).as_posix()
+                out[rel_sub] = _file_hash(sub)
+    for pattern in IMMUTABLE_GLOBS:
+        for sub in sorted(root.glob(pattern)):
+            if sub.is_file():
+                out[sub.relative_to(root).as_posix()] = _file_hash(sub)
     return out
 
 
