@@ -35,4 +35,9 @@ eval-fixtures/**/candidate.musicxml
 eval-fixtures/**/result.json
 eval-runs/*.json
 eval-runs/*.txt
+eval-runs/*.png
 eval-runs/loop.log
+eval-runs/loop.pid
+eval-runs/iter_*.agent.log
+eval-runs/score-history.csv
+# iter_*.md docs and MEMORY.md ARE checked in — they're the agent's memory.

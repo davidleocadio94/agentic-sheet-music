@@ -8,6 +8,7 @@ dependencies = [
     "google-genai>=1.73.1",
     "music21>=9.1",
     "pymupdf>=1.27.2.3",
+    "setproctitle>=1.3.7",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +34,7 @@ dev = [
 analyze = "agentic_sheet_music.cli:main"
 eval = "agentic_sheet_music.eval.cli:main"
 improve-omr = "agentic_sheet_music.eval.loop:main"
+improve-omr-stop = "agentic_sheet_music.eval.loop:stop_main"
 
 [build-system]
 requires = ["hatchling"]
