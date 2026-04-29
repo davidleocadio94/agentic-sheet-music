@@ -36,11 +36,13 @@ PLOT_TXT = EVAL_RUNS / "score-plot.txt"
 MEMORY_MD = EVAL_RUNS / "MEMORY.md"
 
 DEFAULT_MAX_HOURS = 8.0
-# An iteration is: think + edit code + run `uv run eval` (which itself
-# takes 3-8 min for 6 fixtures × N samples × Gemini round-trip) + write
-# the iter doc. 45 min covers a comfortable iteration even when the
-# agent runs eval twice (e.g. once to A/B test).
-AGENT_HARD_TIMEOUT_SEC = 45 * 60
+# Wall-clock cap per iteration. A typical iteration is 8-25 min:
+# read docs + think + edit + `uv run eval` (3-8 min itself) + maybe
+# A/B test with a second eval + write iter doc. Worst realistic case
+# (research, multiple evals, dep install) is 50-60 min. We cap at 2h
+# so genuinely-runaway loops still die, but normal exploration has
+# breathing room. The 12-min idle watchdog catches real hangs faster.
+AGENT_HARD_TIMEOUT_SEC = 2 * 60 * 60
 AGENT_NAME_TEMPLATE = "improve-omr-iter-{n}"
 LOOP_NAME = "improve-omr-loop"
 
