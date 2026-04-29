@@ -44,6 +44,46 @@ Do NOT include `<?xml ...?>`, `<!DOCTYPE>`, or `<score-partwise>` wrappers.
 Use the exact tag names from the MusicXML 4.0 spec. Be conservative:
 if you can't read something clearly, omit it rather than guess.
 
+## ⚠️ THE #1 ERROR YOU WILL MAKE: STEPS vs THIRDS — READ THIS FIRST ⚠️
+
+The most common — and most damaging — transcription error in vision-based
+OMR is misreading a THIRD (line→line or space→space) as a STEP (line→space
+or space→line). Before you write a single `<pitch>`, internalize this:
+
+**For every consecutive pair of notes, classify the visual move:**
+1. Both noteheads on a LINE (line→line) → THIRD (skip a letter: C→E, D→F, E→G, F→A, G→B, A→C, B→D)
+2. Both noteheads on a SPACE (space→space) → THIRD (same skip rule)
+3. Line→adjacent space, OR space→adjacent line → SECOND/STEP (next letter)
+4. Line→space-2-away, OR space→line-2-away → FOURTH (skip two letters)
+5. Line→line-with-one-line-between, OR space→space-with-one-space-between → FIFTH
+
+If the two noteheads sit on the SAME TYPE of staff position (both lines or
+both spaces), the letters MUST skip one. NEVER emit consecutive letters
+(C-D, D-E, E-F, F-G, G-A, A-B) for a line→line or space→space move.
+
+**Failure-mode worked examples (these are the exact errors you make):**
+- A treble C-major arpeggio C4-E4-G4: C is one ledger line BELOW the staff
+  (line), E is the bottom line, G is line 2. ALL THREE on lines. So the
+  letters MUST be C-E-G. Reading this as C-D-E is WRONG (the notes would
+  alternate line-space-line, not line-line-line).
+- A treble D-major arpeggio D4-F#4-A4-D5: D is the space below the staff,
+  F# is space 1, A is space 2, D5 is space 4. ALL ON SPACES. Letters must
+  be D-F-A-D. Reading this as D-E-F-G is WRONG (D-E-F-G is a scale, all
+  steps; arpeggios are skips).
+- A C-major scale C4-D4-E4-F4-G4: C (ledger line), D (space below), E
+  (bottom line), F (space 1), G (line 2). ALTERNATES line-space-line-
+  space-line. Letters must alternate too: C-D-E-F-G. Reading this as
+  C-E-G-B-D would be WRONG (that's all-on-lines, a stack of thirds).
+
+**Before you finalize any sequence of notes, do this self-check:**
+For each adjacent pair (N, N+1):
+  - Look at the staff: is N+1's notehead on a LINE or a SPACE?
+  - Is N's notehead on a LINE or a SPACE?
+  - If SAME TYPE (both lines or both spaces) → letters skip one position
+  - If DIFFERENT TYPE (one line, one space, adjacent) → letters are consecutive
+If your letters say "C-D" but the noteheads are both on lines, FIX IT to
+"C-E". Do not output the wrong letters.
+
 ## Step 1: read the staff context FIRST, before any notes
 
 Before transcribing notes, identify and emit these as `<attributes>` in the
@@ -76,39 +116,6 @@ Read each note's vertical position carefully against the staff lines. A note
 sitting on the third line from the bottom of treble is **B4**. A note on
 the second line from the top of treble is **D5**. Octave errors are the most
 common mistake — slow down and count line-by-line.
-
-## Step 2b: VISUAL INTERVAL CHECK — do not default to stepwise motion
-
-After you assign a letter to each note, look at consecutive notes and verify
-the visual interval matches the letter interval. This is the single most
-common transcription error: assuming notes are stepwise (C-D-E) when they
-are actually a third apart (C-E-G).
-
-The rules of the staff:
-- **A second (step, e.g. C→D)** moves the notehead from a LINE to the
-  adjacent SPACE, or from a SPACE to the adjacent LINE. Adjacent positions.
-- **A third (skip, e.g. C→E)** moves the notehead from a LINE to the next
-  LINE up/down, or from a SPACE to the next SPACE. The two noteheads are
-  BOTH on lines or BOTH on spaces, with one staff position skipped between.
-- **A fourth** moves line→space or space→line, but skips two positions.
-- **A fifth** moves line→line or space→space, skipping a whole staff
-  position between them.
-
-Concrete examples on treble clef:
-- C4 (one ledger line below) → E4 (bottom line) is a **third up**, not a
-  second. Both are on lines. Do NOT call this C-D.
-- E4 (bottom line) → G4 (line 2) is a **third up**. Both lines. Not E-F.
-- G4 (line 2) → B4 (line 3) is a **third up**. Both lines. Not G-A.
-- D4 (space below staff) → F4 (space 1) → A4 (space 2) → D5 (space 4) is
-  a D major arpeggio in thirds. Each note is on a SPACE; none is on a line.
-  Do NOT read this as D-E-F-G (a scale).
-
-Before emitting a `<pitch>` for note N+1, ask: "is the notehead on the
-SAME TYPE of position (line/line or space/space) as note N? If so, the
-letter must skip one (C→E, D→F, E→G, F→A, G→B, A→C, B→D)." If you wrote
-two consecutive note letters that look like a step (C-D, D-E, etc.), but
-the noteheads are visually a third apart on the staff, you have made an
-error — fix it.
 
 ## Step 3: key signature application
 

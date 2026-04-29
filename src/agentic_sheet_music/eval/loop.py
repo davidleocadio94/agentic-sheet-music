@@ -220,6 +220,11 @@ def _spawn_agent(iteration: int) -> str:
         "Read,Edit,Write,Glob,Grep,Bash,WebSearch,WebFetch,Agent",
         "--max-turns", "60",
         "--permission-mode", "acceptEdits",
+        # Stream live progress so the watchdog can see the agent working.
+        # Without these flags, claude -p only emits at the very end, and
+        # the watchdog kills the subprocess prematurely.
+        "--verbose",
+        "--output-format", "stream-json",
     ]
 
     iter_log = EVAL_RUNS / f"iter_{iteration:03d}.agent.log"
