@@ -36,7 +36,11 @@ PLOT_TXT = EVAL_RUNS / "score-plot.txt"
 MEMORY_MD = EVAL_RUNS / "MEMORY.md"
 
 DEFAULT_MAX_HOURS = 8.0
-AGENT_HARD_TIMEOUT_SEC = 20 * 60
+# An iteration is: think + edit code + run `uv run eval` (which itself
+# takes 3-8 min for 6 fixtures × N samples × Gemini round-trip) + write
+# the iter doc. 45 min covers a comfortable iteration even when the
+# agent runs eval twice (e.g. once to A/B test).
+AGENT_HARD_TIMEOUT_SEC = 45 * 60
 AGENT_NAME_TEMPLATE = "improve-omr-iter-{n}"
 LOOP_NAME = "improve-omr-loop"
 

@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_RENDER_DPI = 400
 DEFAULT_MAX_OUTPUT_TOKENS = 64_000
-DEFAULT_NUM_SAMPLES = 3  # self-consistency: smooth per-call variance via voting
+DEFAULT_NUM_SAMPLES = 5  # self-consistency: smooth per-call variance via voting
+DEFAULT_TEMPERATURE = 0.2  # low but non-zero so samples can diverge for voting
 
 # We re-use the same dotenv lookup as before for dev convenience.
 DEFAULT_DOTENV_PATHS: tuple[Path, ...] = (
@@ -204,6 +205,7 @@ def pdf_to_musicxml(
                         ],
                         config=genai_types.GenerateContentConfig(
                             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+                            temperature=DEFAULT_TEMPERATURE,
                         ),
                     )
                 except Exception as e:  # noqa: BLE001
