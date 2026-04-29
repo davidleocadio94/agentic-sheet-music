@@ -77,6 +77,39 @@ sitting on the third line from the bottom of treble is **B4**. A note on
 the second line from the top of treble is **D5**. Octave errors are the most
 common mistake — slow down and count line-by-line.
 
+## Step 2b: VISUAL INTERVAL CHECK — do not default to stepwise motion
+
+After you assign a letter to each note, look at consecutive notes and verify
+the visual interval matches the letter interval. This is the single most
+common transcription error: assuming notes are stepwise (C-D-E) when they
+are actually a third apart (C-E-G).
+
+The rules of the staff:
+- **A second (step, e.g. C→D)** moves the notehead from a LINE to the
+  adjacent SPACE, or from a SPACE to the adjacent LINE. Adjacent positions.
+- **A third (skip, e.g. C→E)** moves the notehead from a LINE to the next
+  LINE up/down, or from a SPACE to the next SPACE. The two noteheads are
+  BOTH on lines or BOTH on spaces, with one staff position skipped between.
+- **A fourth** moves line→space or space→line, but skips two positions.
+- **A fifth** moves line→line or space→space, skipping a whole staff
+  position between them.
+
+Concrete examples on treble clef:
+- C4 (one ledger line below) → E4 (bottom line) is a **third up**, not a
+  second. Both are on lines. Do NOT call this C-D.
+- E4 (bottom line) → G4 (line 2) is a **third up**. Both lines. Not E-F.
+- G4 (line 2) → B4 (line 3) is a **third up**. Both lines. Not G-A.
+- D4 (space below staff) → F4 (space 1) → A4 (space 2) → D5 (space 4) is
+  a D major arpeggio in thirds. Each note is on a SPACE; none is on a line.
+  Do NOT read this as D-E-F-G (a scale).
+
+Before emitting a `<pitch>` for note N+1, ask: "is the notehead on the
+SAME TYPE of position (line/line or space/space) as note N? If so, the
+letter must skip one (C→E, D→F, E→G, F→A, G→B, A→C, B→D)." If you wrote
+two consecutive note letters that look like a step (C-D, D-E, etc.), but
+the noteheads are visually a third apart on the staff, you have made an
+error — fix it.
+
 ## Step 3: key signature application
 
 The key signature applies to EVERY note of that letter name in EVERY octave

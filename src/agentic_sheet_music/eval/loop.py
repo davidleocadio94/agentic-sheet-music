@@ -223,8 +223,13 @@ def _spawn_agent(iteration: int) -> str:
     ]
 
     iter_log = EVAL_RUNS / f"iter_{iteration:03d}.agent.log"
-    HEARTBEAT_WINDOW_SEC = 5 * 60  # kill if log unchanged for this long
-    POLL_SEC = 15
+    # claude -p can think silently for many minutes; only kill if truly hung.
+    # We cross-check with the iter doc / json being written: if either of
+    # those appears, work is happening even if stdout is silent.
+    HEARTBEAT_WINDOW_SEC = 12 * 60
+    POLL_SEC = 30
+    iter_md = EVAL_RUNS / f"iter_{iteration:03d}.md"
+    iter_json = EVAL_RUNS / f"iter_{iteration:03d}.json"
     try:
         with iter_log.open("w") as logf:
             proc = subprocess.Popen(
@@ -253,7 +258,14 @@ def _spawn_agent(iteration: int) -> str:
                     )
                     _kill_proc(proc)
                     return "hard-timeout"
-                size = iter_log.stat().st_size if iter_log.exists() else 0
+                # Total "evidence the agent is alive" = bytes written to its
+                # stdout log + iter.json + iter.md. As long as ANY of these
+                # grows we count it as progress.
+                size = (
+                    (iter_log.stat().st_size if iter_log.exists() else 0)
+                    + (iter_json.stat().st_size if iter_json.exists() else 0)
+                    + (iter_md.stat().st_size if iter_md.exists() else 0)
+                )
                 if size > last_size:
                     last_size = size
                     last_growth = time.monotonic()
