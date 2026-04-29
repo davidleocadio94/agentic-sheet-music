@@ -33,15 +33,10 @@ fi
 
 # `caffeinate -i` keeps the system from idle-sleeping while the loop runs.
 # DYLD_FALLBACK_LIBRARY_PATH lets cairosvg find /opt/homebrew/lib/libcairo.
-CMD=$(cat <<EOF
-DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib caffeinate -i uv run improve-omr "$@"
-echo
-echo "loop exited. press Enter to close this tmux pane..."
-read -r
-EOF
-)
-
-tmux new-session -d -s "$SESSION" "bash -lc '$CMD'"
+# Pass the command directly to tmux (no nested bash -lc) so $@ expands cleanly.
+tmux new-session -d -s "$SESSION" \
+  env DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib \
+  caffeinate -i uv run improve-omr "$@"
 
 echo "started in tmux session '$SESSION'."
 echo "  attach: tmux attach -t $SESSION"
