@@ -13,6 +13,7 @@ sampling, etc.) come through the autoresearch loop driven by `eval-fixtures/`.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
 import re
@@ -21,6 +22,7 @@ from pathlib import Path
 import pymupdf
 from google import genai
 from google.genai import types as genai_types
+from PIL import Image, ImageEnhance, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -239,9 +241,7 @@ def _measure_majority_vote(samples: list[str]) -> str:
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<score-partwise version="4.0">\n'
         f"  {part_list_xml}\n"
-        f'  <part id="{part_id}">\n'
-        + "\n".join(f"    {m}" for m in measure_xmls)
-        + "\n  </part>\n"
+        f'  <part id="{part_id}">\n' + "\n".join(f"    {m}" for m in measure_xmls) + "\n  </part>\n"
         "</score-partwise>\n"
     )
 
@@ -251,7 +251,6 @@ def _normalize_measure(measure_el) -> str:
 
     Strips whitespace and ignores attributes that shouldn't affect equality.
     """
-    import xml.etree.ElementTree as ET
 
     parts: list[str] = []
     for el in measure_el.iter():
@@ -316,7 +315,25 @@ def _render_page_cropped(page, dpi: int) -> bytes:
     scale = 72.0 / dpi
     clip = pymupdf.Rect(x0 * scale, y0 * scale, x1 * scale, y1 * scale)
     cropped = page.get_pixmap(dpi=dpi, clip=clip)
-    return cropped.tobytes("png")
+    return _enhance_png(cropped.tobytes("png"))
+
+
+def _enhance_png(png_bytes: bytes) -> bytes:
+    """Boost contrast + sharpness so noteheads are crisper for the vision model.
+
+    Sheet music is a high-contrast, line-and-blob image; aggressive autocontrast
+    pulls any anti-aliased greys back to near-pure black/white, which makes
+    noteheads-on-staff-lines easier to localise vertically. A 2x sharpen
+    re-defines edges blurred by Verovio's render at 400 DPI.
+    """
+    img = Image.open(io.BytesIO(png_bytes))
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img = ImageOps.autocontrast(img, cutoff=1)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+    out = io.BytesIO()
+    img.save(out, format="PNG", optimize=False)
+    return out.getvalue()
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -340,11 +357,13 @@ def _stitch_pages(page_xmls: list[str]) -> str:
 
     # Crude but works for this single-instrument case: pull <part-list> from
     # the first page, then collect every <measure>...</measure> across all.
-    part_list_match = re.search(
-        r"<part-list>.*?</part-list>", page_xmls[0], re.DOTALL
-    )
-    part_list = part_list_match.group(0) if part_list_match else (
-        '<part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>'
+    part_list_match = re.search(r"<part-list>.*?</part-list>", page_xmls[0], re.DOTALL)
+    part_list = (
+        part_list_match.group(0)
+        if part_list_match
+        else (
+            '<part-list><score-part id="P1"><part-name>Music</part-name></score-part></part-list>'
+        )
     )
 
     part_id_match = re.search(r'<score-part id="([^"]+)"', part_list)
@@ -359,9 +378,7 @@ def _stitch_pages(page_xmls: list[str]) -> str:
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<score-partwise version="4.0">\n'
         f"  {part_list}\n"
-        f'  <part id="{part_id}">\n'
-        + "\n".join(f"    {m}" for m in measures)
-        + f"\n  </part>\n"
+        f'  <part id="{part_id}">\n' + "\n".join(f"    {m}" for m in measures) + "\n  </part>\n"
         "</score-partwise>\n"
     )
     return body

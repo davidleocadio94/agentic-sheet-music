@@ -223,6 +223,8 @@ def _spawn_agent(iteration: int) -> str:
     ]
 
     iter_log = EVAL_RUNS / f"iter_{iteration:03d}.agent.log"
+    HEARTBEAT_WINDOW_SEC = 5 * 60  # kill if log unchanged for this long
+    POLL_SEC = 15
     try:
         with iter_log.open("w") as logf:
             proc = subprocess.Popen(
@@ -232,20 +234,49 @@ def _spawn_agent(iteration: int) -> str:
                 cwd=REPO_ROOT,
                 env={**os.environ, "DYLD_FALLBACK_LIBRARY_PATH": "/opt/homebrew/lib"},
             )
-            try:
-                rc = proc.wait(timeout=AGENT_HARD_TIMEOUT_SEC)
-            except subprocess.TimeoutExpired:
-                _log(f"iter {iteration}: agent timeout, killing pid={proc.pid}")
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                rc = -1
-        return f"rc={rc}"
+            start = time.monotonic()
+            last_size = 0
+            last_growth = start
+            while True:
+                if _should_stop:
+                    _log(f"iter {iteration}: user stop, killing agent pid={proc.pid}")
+                    _kill_proc(proc)
+                    return "user-stop"
+                rc = proc.poll()
+                if rc is not None:
+                    return f"rc={rc}"
+                elapsed = time.monotonic() - start
+                if elapsed >= AGENT_HARD_TIMEOUT_SEC:
+                    _log(
+                        f"iter {iteration}: hard timeout {elapsed:.0f}s, "
+                        f"killing pid={proc.pid}"
+                    )
+                    _kill_proc(proc)
+                    return "hard-timeout"
+                size = iter_log.stat().st_size if iter_log.exists() else 0
+                if size > last_size:
+                    last_size = size
+                    last_growth = time.monotonic()
+                stalled = time.monotonic() - last_growth
+                if stalled >= HEARTBEAT_WINDOW_SEC:
+                    _log(
+                        f"iter {iteration}: agent idle for {stalled:.0f}s "
+                        f"(log size {size}); assuming hung, killing pid={proc.pid}"
+                    )
+                    _kill_proc(proc)
+                    return "heartbeat-hang"
+                time.sleep(POLL_SEC)
     except Exception as e:  # noqa: BLE001
         _log(f"iter {iteration}: agent spawn failed: {e}")
         return f"spawn-failed: {e}"
+
+
+def _kill_proc(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 def _build_agent_prompt(iteration: int) -> str:
