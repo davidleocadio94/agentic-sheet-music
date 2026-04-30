@@ -172,8 +172,12 @@ def _run_one_iter(iteration: int) -> IterOutcome | None:
         except Exception:  # noqa: BLE001
             new_score = pre_score
     else:
-        # Agent didn't run eval; we run it once to be sure.
-        new_score = _run_eval_and_record(iteration, note="post-iter forced eval")
+        # Agent didn't write iter_NNN.json. Don't run a fallback eval —
+        # that path can block on dead Gemini sockets after laptop sleep.
+        # Just record the pre-score and move on.
+        _log(f"iter {iteration}: no iter_{iteration:03d}.json from agent; "
+             f"keeping previous score ({pre_score:.4f})")
+        new_score = pre_score
 
     delta = new_score - pre_score
     _log(f"iter {iteration}: score {pre_score:.4f} → {new_score:.4f} (Δ {delta:+.4f}); "
@@ -331,8 +335,22 @@ Then:
 5. Write {iter_md} following the format in loop-guardrails.md.
    Be honest about what didn't work. Future agents read this.
 
-You have 20 minutes hard timeout. Wrap up at 10 minutes if not converged.
+You have 2 HOURS hard timeout. The 12-min idle watchdog kills you if
+you go silent for too long.
+
+CRITICAL — DON'T LOOK IDLE TO THE WATCHDOG:
+- Do NOT use `Bash sleep N` with N>60. Long sleeps make you appear
+  hung; the watchdog (12-min idle) will kill you.
+- If you're polling a background eval, use the `Monitor` tool or
+  short polling intervals (10-30s), and emit some output between
+  polls so your stdout stream stays alive.
+- Better: run the eval in the FOREGROUND with --notes "..." (it
+  prints fixture-by-fixture progress as it goes; your watchdog
+  sees that as activity).
+
 Quality of the iter doc matters more than chasing one more retry.
+Always write {iter_md} even if you reverted — that's how the next
+agent learns.
 """
 
 

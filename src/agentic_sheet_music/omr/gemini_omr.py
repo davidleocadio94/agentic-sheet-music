@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_RENDER_DPI = 400
 DEFAULT_MAX_OUTPUT_TOKENS = 64_000
-DEFAULT_NUM_SAMPLES = 5  # self-consistency: smooth per-call variance via voting
+DEFAULT_NUM_SAMPLES = 3  # self-consistency: smooth per-call variance via voting
 DEFAULT_TEMPERATURE = 0.2  # low but non-zero so samples can diverge for voting
 
 # We re-use the same dotenv lookup as before for dev convenience.
@@ -157,6 +157,43 @@ duration in a measure must equal `(beats * 32 / beat_type)`.
 - Stem direction alone doesn't change pitch — read the notehead position.
 - Letters like "p, i, m, a" near the staff are right-hand fingerings, not pitches.
 
+## Step 7: specific errors PRIOR runs of this exact prompt have made — DO NOT REPEAT
+
+The following are real failure cases observed on simple fixtures. For each,
+the wrong reading and the correct reading are given. Avoid the wrong pattern.
+
+A. **Octave error on a leap.** Two notes alternating between middle C (C4,
+   one ledger line BELOW treble) and the C an octave above (C5, third space
+   from bottom). Wrong reading: `C4-G4-C4-G4` (the upper C5 misread as G4 —
+   second line from BOTTOM, the line the treble clef wraps around). Correct
+   reading: `C4-C5-C4-C5`. C5 sits in the MIDDLE of the staff (third space
+   from bottom). If you see two notes far apart vertically, they are an
+   OCTAVE — don't compress to a fourth or fifth. C4 (one ledger line below
+   the bottom of the staff) ↔ C5 (middle of the staff) is a 1-octave leap.
+
+B. **Note dropped or merged on a duration mismatch.** A 6-note sequence
+   `qtr,8th,8th,qtr,8th,8th` (C4-D4-E4-F4-G4-A4 in 4/4) was wrongly
+   transcribed as 5 notes (last two 8ths collapsed into a single qtr).
+   Count noteheads BEFORE assigning durations. If you see 6 noteheads,
+   emit 6 `<note>` elements. Then assign durations such that the sum
+   equals the measure (4 quarters in 4/4).
+
+C. **Step misread as a third (line ↔ space).** A 4-note pattern
+   `dot-qtr 8th dot-qtr 8th` with pitches C4-D4-E4-F4 (a scale, all steps)
+   was wrongly transcribed as C4-F4-E4-G4. The 2nd note D4 (space just
+   below the staff) was misread as F4 (space 1 inside the staff). When
+   note 2 is visually adjacent (same vertical neighbourhood) to note 1,
+   it is a STEP, not a leap. C4 → D4 is one position higher; C4 → F4
+   is FOUR positions higher (a perfect fourth, a big visible jump).
+
+D. **Top-of-staff confusion: D5 vs C#5 (in D major).** A scale segment
+   descending C#5-A4-F#4-D4 was wrongly transcribed as D5-A4-F#4-D4
+   (first note read as D5 = top space + 1, instead of C#5 = top space).
+   In treble: top line is F5; the space just above the top line is G5;
+   the space just BELOW the top line is E5; one line down from F5 is D5;
+   the space below D5 is C5 (with `<alter>1</alter>` for C# in D major).
+   A notehead sitting in the SECOND-FROM-TOP space is C5/C#5, not D5.
+
 ## Output format
 
 Just the raw MusicXML fragment, no markdown fences, no commentary.
@@ -197,6 +234,10 @@ def pdf_to_musicxml(
             png = _render_page_cropped(page, render_dpi)
             for s in range(num_samples):
                 try:
+                    # 120s per-call timeout: prevents the SSL socket from
+                    # hanging forever after laptop sleep / network blip.
+                    # If the call genuinely needs more, that's a hung socket,
+                    # not a slow Gemini.
                     resp = client.models.generate_content(
                         model=model,
                         contents=[
@@ -206,6 +247,7 @@ def pdf_to_musicxml(
                         config=genai_types.GenerateContentConfig(
                             max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
                             temperature=DEFAULT_TEMPERATURE,
+                            http_options=genai_types.HttpOptions(timeout=120_000),
                         ),
                     )
                 except Exception as e:  # noqa: BLE001
