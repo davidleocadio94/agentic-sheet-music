@@ -357,8 +357,26 @@ def _run_eval_and_record(iteration: int, note: str) -> float:
 
 
 def _next_iter_number() -> int:
+    """Pick the next iter number. Look at score-history.csv AND the existing
+    iter_*.json / iter_*.agent.log files — even unsuccessful iters left
+    artifacts behind, and we shouldn't reuse those numbers.
+    """
     history = plot.read_history(HISTORY_CSV)
-    return (history[-1][0] + 1) if history else 1
+    last_history = history[-1][0] if history else 0
+    last_files = 0
+    for p in EVAL_RUNS.glob("iter_*.json"):
+        try:
+            n = int(p.stem.split("_")[1])
+            last_files = max(last_files, n)
+        except (ValueError, IndexError):
+            continue
+    for p in EVAL_RUNS.glob("iter_*.agent.log"):
+        try:
+            n = int(p.name.split("_")[1].split(".")[0])
+            last_files = max(last_files, n)
+        except (ValueError, IndexError):
+            continue
+    return max(last_history, last_files) + 1
 
 
 def _git_reset_to(commit: str) -> None:
