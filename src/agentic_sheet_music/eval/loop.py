@@ -241,7 +241,7 @@ def _spawn_agent(iteration: int) -> str:
     # claude -p can think silently for many minutes; only kill if truly hung.
     # We cross-check with the iter doc / json being written: if either of
     # those appears, work is happening even if stdout is silent.
-    HEARTBEAT_WINDOW_SEC = 12 * 60
+    HEARTBEAT_WINDOW_SEC = 45 * 60
     POLL_SEC = 30
     iter_md = EVAL_RUNS / f"iter_{iteration:03d}.md"
     iter_json = EVAL_RUNS / f"iter_{iteration:03d}.json"
