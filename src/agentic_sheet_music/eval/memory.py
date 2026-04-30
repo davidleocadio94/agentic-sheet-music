@@ -25,7 +25,25 @@ def rebuild(eval_runs_dir: Path) -> Path:
     works: list[str] = []
     fails: list[str] = []
     open_hyp: list[str] = []
-    pitfalls: list[str] = ["per-call variance is high (≈30 points). N≥3 self-consistency recommended."]
+    pitfalls: list[str] = [
+        "per-call variance is high (≈30 points). N≥3 self-consistency recommended.",
+        (
+            "ANY experiment that makes Gemini produce more output per call "
+            "(longer prompt, larger image, required trace comments, "
+            "structured schema) MUST drop num_samples to N=1 (or N=2) "
+            "FIRST, before running the full eval. Iters 4 (overlay) and "
+            "5 (trace prompt) BOTH blew past the timeout at default N=5 "
+            "because per-call latency doubled. To verify before committing "
+            "to a 30-call eval: time ONE call against ONE fixture's "
+            "source.pdf first; if >2× the baseline, drop N or simplify."
+        ),
+        (
+            "The current baseline (55.6% on 5/9 measures) comes from "
+            "autocontrast + 2× sharpening on the cropped image. That code "
+            "is in src/agentic_sheet_music/omr/gemini_omr.py — the iter doc "
+            "from when it landed never got written. Don't re-discover it."
+        ),
+    ]
 
     for d, f in docs:
         line_summary = (
